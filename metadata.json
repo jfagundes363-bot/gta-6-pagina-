@@ -1,0 +1,6 @@
+{
+  "name": "Fábrica GTA VI",
+  "description": "Monte um canal de GTA VI 100% pronto pra usar e lucre com a maior onda de atenção da década.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
