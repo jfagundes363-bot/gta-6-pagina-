@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronLeft,
   ChevronRight,
@@ -55,12 +55,13 @@ const testimonials: Testimonial[] = [
   { id: 9, image: "/assets/cmGzNnT.webp", fallback: "https://i.imgur.com/cmGzNnT.png", aspectClass: "aspect-[941/1671]", width: 941, height: 1671 },
 ];
 
-export default function App() {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const carouselRef = useRef<HTMLDivElement>(null);
-  
-  // VSL Video Player State
+/**
+ * Componente VSL Isolado:
+ * Isola o estado do player de vídeo (onTimeUpdate e progresso verde)
+ * para evitar que o componente raiz re-renderize a cada 100ms durante a reprodução,
+ * garantindo máxima fluidez e resposta tátil na página.
+ */
+const VslVideoPlayer = React.memo(function VslVideoPlayer() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -104,6 +105,78 @@ export default function App() {
     }
   };
 
+  return (
+    <div className="relative mx-auto w-full max-w-[310px] sm:max-w-[340px] aspect-[9/16] bg-black rounded-[36px] sm:rounded-[42px] border-[5px] sm:border-[6px] border-slate-900 shadow-[0_25px_60px_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.12)] overflow-hidden select-none gpu-layer">
+      {/* HTML5 Video Element */}
+      <video
+        ref={videoRef}
+        src="https://i.imgur.com/pSTK1zz.mp4"
+        poster="/assets/pSTK1zz.webp"
+        playsInline
+        preload="metadata"
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        onClick={togglePlay}
+        className="w-full h-full object-cover cursor-pointer block"
+      />
+
+      {/* Capa do primeiro frame + Ícone YouTube Centralizado quando pausado */}
+      {!isPlaying && (
+        <div 
+          onClick={togglePlay}
+          className="absolute inset-0 z-20 flex items-center justify-center cursor-pointer bg-black/10"
+        >
+          {/* Imagem do primeiro frame (capa) */}
+          <img 
+            src="/assets/pSTK1zz.webp" 
+            alt="Capa do vídeo" 
+            width={464}
+            height={832}
+            className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+            loading="lazy"
+            decoding="async"
+          />
+          
+          {/* Sombra sutil para destaque do botão */}
+          <div className="absolute inset-0 bg-black/20 pointer-events-none" />
+
+          {/* Ícone YouTube Centralizado */}
+          <div className="relative z-10 group/yt cursor-pointer transform transition-transform duration-200 hover:scale-110 active:scale-95">
+            <svg 
+              viewBox="0 0 68 48" 
+              className="w-16 h-12 sm:w-20 sm:h-14 drop-shadow-[0_8px_25px_rgba(0,0,0,0.6)]"
+            >
+              <path 
+                d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z" 
+                fill="#FF0000" 
+              />
+              <path d="M45,24 27,14 27,34" fill="#FFFFFF" />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* Barra de andamento verde conforme o vídeo anda */}
+      <div 
+        onClick={handleSeek}
+        className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-30 cursor-pointer py-1.5"
+      >
+        <div className="w-full h-1 sm:h-1.5 bg-white/25 rounded-full overflow-hidden">
+          <div 
+            className="bg-[#22c55e] h-full rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(34,197,94,0.9)]"
+            style={{ width: `${videoProgress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default function App() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const carouselRef = useRef<HTMLDivElement>(null);
+
   // Calculate days left to launch (19/11/2026)
   const [daysLeft, setDaysLeft] = useState(() => {
     const launch = new Date(2026, 10, 19).getTime();
@@ -112,25 +185,36 @@ export default function App() {
     return days > 0 ? days : 17;
   });
 
+  // Sempre ir ao topo ao abrir ou recarregar a página
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if ('scrollRestoration' in window.history) {
+        window.history.scrollRestoration = 'manual';
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, []);
+
   useEffect(() => {
     const updateDays = () => {
       const launch = new Date(2026, 10, 19).getTime();
       const diff = launch - new Date().getTime();
       const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-      setDaysLeft(days > 0 ? days : 17);
+      const targetDays = days > 0 ? days : 17;
+      setDaysLeft((prev) => (prev !== targetDays ? targetDays : prev));
     };
     updateDays();
-    const interval = setInterval(updateDays, 1000 * 60); // update every minute
+    const interval = setInterval(updateDays, 1000 * 60 * 60); // update every hour
     return () => clearInterval(interval);
   }, []);
 
-  const prevSlide = () => {
+  const prevSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev - 1 + testimonials.length) % testimonials.length);
-  };
+  }, []);
 
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % testimonials.length);
-  };
+  }, []);
 
   useEffect(() => {
     if (carouselRef.current) {
@@ -265,77 +349,13 @@ export default function App() {
         <div className="max-w-[680px] mx-auto">
           {/* Smartphone Frame para VSL (Apenas bordas elegantes, sem notch/câmera obstruindo) */}
           <div className="w-full flex justify-center py-2 sm:py-4">
-            <div className="relative mx-auto w-full max-w-[310px] sm:max-w-[340px] aspect-[9/16] bg-black rounded-[36px] sm:rounded-[42px] border-[5px] sm:border-[6px] border-slate-900 shadow-[0_25px_60px_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.12)] overflow-hidden select-none">
-              
-              {/* HTML5 Video Element */}
-              <video
-                ref={videoRef}
-                src="https://i.imgur.com/QJSEEZ5.mp4"
-                poster="/assets/vsl-poster.webp"
-                playsInline
-                preload="metadata"
-                onTimeUpdate={handleTimeUpdate}
-                onEnded={handleEnded}
-                onClick={togglePlay}
-                className="w-full h-full object-cover cursor-pointer block"
-              />
-
-              {/* Capa do primeiro frame + Ícone YouTube Centralizado quando pausado */}
-              {!isPlaying && (
-                <div 
-                  onClick={togglePlay}
-                  className="absolute inset-0 z-20 flex items-center justify-center cursor-pointer bg-black/10"
-                >
-                  {/* Imagem do primeiro frame (capa) */}
-                  <img 
-                    src="/assets/vsl-poster.webp" 
-                    alt="Capa do vídeo" 
-                    width={464}
-                    height={832}
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  
-                  {/* Sombra sutil para destaque do botão */}
-                  <div className="absolute inset-0 bg-black/20 pointer-events-none" />
-
-                  {/* Ícone YouTube Centralizado */}
-                  <div className="relative z-10 group/yt cursor-pointer transform transition-transform duration-200 hover:scale-110 active:scale-95">
-                    <svg 
-                      viewBox="0 0 68 48" 
-                      className="w-16 h-12 sm:w-20 sm:h-14 drop-shadow-[0_8px_25px_rgba(0,0,0,0.6)]"
-                    >
-                      <path 
-                        d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z" 
-                        fill="#FF0000" 
-                      />
-                      <path d="M45,24 27,14 27,34" fill="#FFFFFF" />
-                    </svg>
-                  </div>
-                </div>
-              )}
-
-              {/* Barra de andamento verde conforme o vídeo anda */}
-              <div 
-                onClick={handleSeek}
-                className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-30 cursor-pointer py-1.5"
-              >
-                <div className="w-full h-1 sm:h-1.5 bg-white/25 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-[#22c55e] h-full rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(34,197,94,0.9)]"
-                    style={{ width: `${videoProgress}%` }}
-                  />
-                </div>
-              </div>
-
-            </div>
+            <VslVideoPlayer />
           </div>
         </div>
       </section>
 
       {/* NOVA SEÇÃO: IDENTIFICAÇÃO EMOCIONAL (GTA VI) */}
-      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-[#000000] text-white border-t border-slate-900">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-[#000000] text-white border-t border-slate-900 section-lazy">
         <div className="max-w-[880px] mx-auto">
           
           {/* Headline Principal */}
@@ -457,7 +477,7 @@ export default function App() {
       </section>
 
       {/* 7. SECTION: SEU CANAL MONTADO - VEJA O QUE RECEBE + BÔNUS */}
-      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-slate-50/70">
+      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-slate-50/70 section-lazy">
         <div className="max-w-[680px] mx-auto">
           
           <h2 className="text-center font-anton uppercase text-2xl sm:text-4xl leading-tight mb-6 sm:mb-8 text-slate-950">
@@ -545,7 +565,7 @@ export default function App() {
       </section>
 
       {/* 8. SECTION: OBJEÇÕES - SERÁ QUE FUNCIONA MESMO PRA MIM? */}
-      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white">
+      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white section-lazy">
         <div className="max-w-[680px] mx-auto">
           <h2 className="text-center font-anton uppercase text-2xl sm:text-4xl leading-tight mb-6 sm:mb-8 text-slate-950">
             “Será que funciona <span className="gta-gradient-text">mesmo pra mim?</span>”
@@ -607,7 +627,7 @@ export default function App() {
 
 
       {/* 10. SECTION: EM 3 PASSOS */}
-      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-slate-50/70">
+      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-slate-50/70 section-lazy">
         <div className="max-w-[680px] mx-auto">
           <h2 className="text-center font-anton uppercase text-2xl sm:text-4xl leading-tight mb-6 sm:mb-8 text-slate-950">
             Em <span className="gta-gradient-text">3 passos</span>:
@@ -664,7 +684,7 @@ export default function App() {
       </section>
 
       {/* 11. SECTION: O QUE ESTÃO DIZENDO */}
-      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white">
+      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white section-lazy">
         <div className="max-w-[760px] mx-auto">
           <h2 className="text-center font-anton uppercase text-2xl sm:text-4xl leading-tight mb-4 sm:mb-6 text-slate-950">
             O que estão dizendo
@@ -953,7 +973,7 @@ export default function App() {
       </section>
 
       {/* 13. SECTION: GARANTIA */}
-      <section className="py-8 sm:py-12 px-4 sm:px-6 bg-slate-50/70 border-t border-slate-100">
+      <section className="py-8 sm:py-12 px-4 sm:px-6 bg-slate-50/70 border-t border-slate-100 section-lazy">
         <div className="max-w-[680px] mx-auto text-center">
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center">
             <img 
@@ -979,7 +999,7 @@ export default function App() {
       </section>
 
       {/* 14. SECTION: PERGUNTAS FREQUENTES (FAQ) */}
-      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white">
+      <section className="py-10 sm:py-16 px-4 sm:px-6 border-t border-slate-100 bg-white section-lazy">
         <div className="max-w-[680px] mx-auto">
           <h2 className="text-center font-anton uppercase text-2xl sm:text-4xl leading-tight mb-6 sm:mb-8 text-slate-950">
             Perguntas <span className="gta-gradient-text">frequentes</span>
@@ -1062,7 +1082,7 @@ export default function App() {
             </p>
             <span className="hidden sm:inline text-slate-300">•</span>
             <a
-              href="https://www.instagram.com/noob.toon_/?__pwa=1#"
+              href="https://www.instagram.com/noobtoon_/?__pwa=1#"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-slate-700 hover:text-[#ff2d87] transition-colors font-medium text-xs sm:text-[13px] group"
